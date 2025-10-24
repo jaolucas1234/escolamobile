@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'login.dart';
+import '../services/storage_service.dart';
+import 'atividades.dart';
 
 class Turma {
   final int id;
   final String nome;
-  final String codigo;
 
-  Turma({required this.id, required this.nome, required this.codigo});
+  Turma({required this.id, required this.nome});
 
   factory Turma.fromJson(Map<String, dynamic> json) {
     return Turma(
       id: json['id'] ?? json['id_turma'] ?? 0,
-      nome: json['nome'] ?? '',
-      codigo: json['codigo'] ?? '',
+      nome: json['serie'] ?? '', // Use 'serie' como nome da turma
     );
   }
 }
@@ -51,9 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
       print('Carregando turmas do professor ID: ${widget.professorId}');
 
       final response = await http.get(
-        Uri.parse(
-          'http://localhost:3001/professor/${widget.professorId}/turmas',
-        ),
+        Uri.parse('http://localhost:3001/turmas/${widget.professorId}'),
       );
 
       print('Status Code Turmas: ${response.statusCode}');
@@ -98,8 +96,8 @@ class _HomeScreenState extends State<HomeScreen> {
         Uri.parse('http://localhost:3001/turmas'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          'nome': _turmaNomeController.text,
-          'id_professor': widget.professorId,
+          'serie': _turmaNomeController.text,
+          'professorId': widget.professorId,
         }),
       );
 
@@ -147,12 +145,36 @@ class _HomeScreenState extends State<HomeScreen> {
       print('Status Code Exclusão: ${response.statusCode}');
       print('Response Body Exclusão: ${response.body}');
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 204) {
         await _carregarTurmas();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Turma excluída com sucesso!'),
             backgroundColor: Colors.green,
+          ),
+        );
+      } else if (response.statusCode == 500) {
+        // Trata especificamente o Internal Server Error como turma com atividades
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Não é possível apagar uma turma com atividades'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      } else if (response.statusCode == 400 || response.statusCode == 409) {
+        // Outros erros de restrição
+        final data = json.decode(response.body);
+        final errorMessage =
+            data['message'] ??
+            data['error'] ??
+            'Não é possível apagar uma turma com atividades';
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 5),
           ),
         );
       } else {
@@ -175,7 +197,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _sair() {
+  Future<void> _sair() async {
+    await StorageService().logout();
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -183,9 +207,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _visualizarTurma(Turma turma) {
-    // Aqui você pode navegar para a tela de detalhes da turma
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Visualizando turma: ${turma.nome}')),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (context) =>
+                AtividadeScreen(turmaId: turma.id, turmaNome: turma.nome),
+      ),
     );
   }
 
@@ -352,10 +380,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           title: Text(
-                            turma.nome,
+                            turma.nome, // Mostra apenas o nome
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          subtitle: Text('Código: ${turma.codigo}'),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -475,8 +502,21 @@ class _HomeScreenState extends State<HomeScreen> {
       builder:
           (context) => AlertDialog(
             title: const Text('Confirmar Exclusão'),
-            content: Text(
-              'Tem certeza que deseja excluir a turma "${turma.nome}"?',
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Tem certeza que deseja excluir a turma "${turma.nome}"?'),
+                const SizedBox(height: 8),
+                const Text(
+                  '⚠️ Atenção: Turmas com atividades não podem ser excluídas.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.orange,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
             actions: [
               TextButton(

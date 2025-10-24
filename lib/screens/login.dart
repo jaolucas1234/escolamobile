@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'home.dart';
+import '../services/storage_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -47,20 +48,28 @@ class _LoginScreenState extends State<LoginScreen> {
           final data = json.decode(response.body);
           print('Dados recebidos: $data');
 
-          // VERIFICAÇÃO CORRIGIDA: Se veio id_professor, login foi bem-sucedido
           if (data['id_professor'] != null) {
             print('Login bem-sucedido!');
             print('Bem-vindo, ${data['nome']}');
 
-            // Você pode salvar os dados do usuário aqui se precisar
-            // Por exemplo: await saveUserData(data);
+            // SALVAR NO STORAGE LOCAL
+            await StorageService().saveLoginData(
+              data['id_professor'],
+              data['nome'] ?? 'Professor',
+            );
 
+            // Navegar para Home
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => const HomeScreen()),
+              MaterialPageRoute(
+                builder:
+                    (context) => HomeScreen(
+                      professorId: data['id_professor'],
+                      professorNome: data['nome'] ?? 'Professor',
+                    ),
+              ),
             );
           } else {
-            // Se não veio id_professor, trata como erro
             final errorMessage =
                 data['message'] ?? data['error'] ?? 'Credenciais inválidas';
 
